@@ -1,5 +1,6 @@
-// Contract addresses - update after deployment
+// Contract addresses - set via env or update after deployment
 export const STARKFIT_CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_STARKFIT_CONTRACT_ADDRESS ||
   "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 // Starknet Sepolia token addresses

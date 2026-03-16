@@ -2,57 +2,56 @@
 
 import { useState } from "react";
 import { useAccount } from "@/providers/starknet";
+import { useStarkFitContract } from "@/lib/hooks";
+import { useChallenges } from "@/lib/useContractData";
+import {
+  formatTokenAmount,
+  getTokenSymbol,
+  getTokenDecimals,
+  getDaysLeft,
+} from "@/lib/contract";
+import { ETH_ADDRESS, WBTC_ADDRESS } from "@/lib/constants";
 import Link from "next/link";
 
-// Mock data for demo
-const MOCK_CHALLENGES = [
-  {
-    id: 1,
-    token: "ETH",
-    stakeAmount: "0.01",
-    durationDays: 30,
-    stepGoal: 7000,
-    activePlayers: 12,
-    totalPlayers: 15,
-    totalPool: "0.15",
-    isActive: true,
-    daysLeft: 22,
-  },
-  {
-    id: 2,
-    token: "ETH",
-    stakeAmount: "0.05",
-    durationDays: 14,
-    stepGoal: 10000,
-    activePlayers: 5,
-    totalPlayers: 8,
-    totalPool: "0.40",
-    isActive: true,
-    daysLeft: 7,
-  },
-  {
-    id: 3,
-    token: "WBTC",
-    stakeAmount: "0.001",
-    durationDays: 7,
-    stepGoal: 7000,
-    activePlayers: 20,
-    totalPlayers: 20,
-    totalPool: "0.02",
-    isActive: true,
-    daysLeft: 5,
-  },
-];
+const TOKEN_MAP: Record<string, string> = {
+  ETH: ETH_ADDRESS,
+  WBTC: WBTC_ADDRESS,
+};
 
 export default function ChallengesPage() {
   const { isConnected } = useAccount();
+  const { createChallenge } = useStarkFitContract();
+  const { data: challenges, loading, error, refetch } = useChallenges();
   const [showCreate, setShowCreate] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [txStatus, setTxStatus] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     token: "ETH",
     stakeAmount: "0.01",
     durationDays: 30,
     stepGoal: 7000,
   });
+
+  const handleCreateChallenge = async () => {
+    setIsCreating(true);
+    setTxStatus(null);
+    try {
+      const tokenAddress = TOKEN_MAP[createForm.token];
+      const txHash = await createChallenge(
+        tokenAddress,
+        createForm.stakeAmount,
+        createForm.durationDays,
+        createForm.stepGoal
+      );
+      setTxStatus(`Challenge created! Tx: ${txHash.slice(0, 10)}...`);
+      setShowCreate(false);
+      refetch();
+    } catch (err: any) {
+      setTxStatus(`Error: ${err.message || "Transaction failed"}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   return (
     <div className="pt-24 px-6 max-w-6xl mx-auto pb-20">
@@ -72,6 +71,19 @@ export default function ChallengesPage() {
           </button>
         )}
       </div>
+
+      {/* Status message */}
+      {txStatus && (
+        <div
+          className={`mb-6 p-3 rounded-lg text-sm ${
+            txStatus.startsWith("Error")
+              ? "bg-red-900/30 border border-red-500/30 text-red-400"
+              : "bg-green-900/30 border border-green-500/30 text-green-400"
+          }`}
+        >
+          {txStatus}
+        </div>
+      )}
 
       {/* Create Challenge Form */}
       {showCreate && (
@@ -117,7 +129,7 @@ export default function ChallengesPage() {
                 onChange={(e) =>
                   setCreateForm({
                     ...createForm,
-                    durationDays: parseInt(e.target.value),
+                    durationDays: parseInt(e.target.value) || 0,
                   })
                 }
                 className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-white"
@@ -133,93 +145,142 @@ export default function ChallengesPage() {
                 onChange={(e) =>
                   setCreateForm({
                     ...createForm,
-                    stepGoal: parseInt(e.target.value),
+                    stepGoal: parseInt(e.target.value) || 0,
                   })
                 }
                 className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-white"
               />
             </div>
           </div>
-          <button className="btn-primary mt-4">Create Challenge</button>
+          <button
+            onClick={handleCreateChallenge}
+            disabled={isCreating}
+            className="btn-primary mt-4"
+          >
+            {isCreating ? "Creating..." : "Create Challenge"}
+          </button>
+        </div>
+      )}
+
+      {/* Loading / Error / Empty states */}
+      {loading && (
+        <div className="text-center py-20 text-[var(--text-secondary)]">
+          Loading challenges from Starknet...
+        </div>
+      )}
+      {error && (
+        <div className="text-center py-20">
+          <p className="text-[var(--accent-red)] mb-4">{error}</p>
+          <button onClick={refetch} className="btn-secondary text-sm">
+            Retry
+          </button>
+        </div>
+      )}
+      {!loading && !error && challenges?.length === 0 && (
+        <div className="text-center py-20 text-[var(--text-secondary)]">
+          <p className="text-xl mb-2">No challenges yet</p>
+          <p>Be the first to create one!</p>
         </div>
       )}
 
       {/* Challenge Cards */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {MOCK_CHALLENGES.map((challenge) => (
-          <div key={challenge.id} className="card hover:border-[var(--accent-green)]/30 transition">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm px-2 py-1 rounded-md bg-green-900/30 text-green-400 border border-green-500/30">
-                Active
-              </span>
-              <span className="text-sm text-[var(--text-secondary)]">
-                {challenge.daysLeft} days left
-              </span>
-            </div>
+        {challenges?.map((ch) => {
+          const symbol = getTokenSymbol(ch.token);
+          const decimals = getTokenDecimals(ch.token);
+          const stakeFormatted = formatTokenAmount(ch.stakeAmount, decimals);
+          const poolFormatted = formatTokenAmount(ch.totalPool, decimals);
+          const daysLeft = getDaysLeft(ch.startTime, ch.durationDays);
+          const survivalRate =
+            ch.totalPlayers > 0
+              ? Math.round((ch.activePlayers / ch.totalPlayers) * 100)
+              : 100;
 
-            <h3 className="text-lg font-semibold mb-1">
-              {challenge.stepGoal.toLocaleString()} Steps / Day
-            </h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              {challenge.durationDays}-day challenge
-            </p>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  Stake
-                </div>
-                <div className="font-semibold">
-                  {challenge.stakeAmount} {challenge.token}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  Prize Pool
-                </div>
-                <div className="font-semibold gradient-text">
-                  {challenge.totalPool} {challenge.token}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  Players
-                </div>
-                <div className="font-semibold">
-                  {challenge.activePlayers}/{challenge.totalPlayers}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-[var(--text-secondary)]">
-                  Survival Rate
-                </div>
-                <div className="font-semibold">
-                  {Math.round(
-                    (challenge.activePlayers / challenge.totalPlayers) * 100
-                  )}
-                  %
-                </div>
-              </div>
-            </div>
-
-            {/* Progress bar showing survival */}
-            <div className="w-full h-2 bg-[var(--bg-secondary)] rounded-full mb-4">
-              <div
-                className="h-2 rounded-full bg-gradient-to-r from-[var(--accent-green)] to-[var(--accent-blue)]"
-                style={{
-                  width: `${(challenge.activePlayers / challenge.totalPlayers) * 100}%`,
-                }}
-              />
-            </div>
-
-            <Link
-              href={`/challenges/${challenge.id}`}
-              className="btn-primary w-full block text-center text-sm"
+          return (
+            <div
+              key={ch.id}
+              className="card hover:border-[var(--accent-green)]/30 transition"
             >
-              {isConnected ? "Join Challenge" : "View Details"}
-            </Link>
-          </div>
-        ))}
+              <div className="flex items-center justify-between mb-4">
+                <span
+                  className={`text-sm px-2 py-1 rounded-md border ${
+                    ch.isEnded
+                      ? "bg-gray-900/30 text-gray-400 border-gray-500/30"
+                      : ch.isActive
+                        ? "bg-green-900/30 text-green-400 border-green-500/30"
+                        : "bg-yellow-900/30 text-yellow-400 border-yellow-500/30"
+                  }`}
+                >
+                  {ch.isEnded ? "Ended" : ch.isActive ? "Active" : "Inactive"}
+                </span>
+                <span className="text-sm text-[var(--text-secondary)]">
+                  {ch.isEnded ? "Completed" : `${daysLeft} days left`}
+                </span>
+              </div>
+
+              <h3 className="text-lg font-semibold mb-1">
+                {ch.stepGoal.toLocaleString()} Steps / Day
+              </h3>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">
+                {ch.durationDays}-day challenge
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Stake
+                  </div>
+                  <div className="font-semibold">
+                    {stakeFormatted} {symbol}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Prize Pool
+                  </div>
+                  <div className="font-semibold gradient-text">
+                    {poolFormatted} {symbol}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Players
+                  </div>
+                  <div className="font-semibold">
+                    {ch.activePlayers}/{ch.totalPlayers}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Survival Rate
+                  </div>
+                  <div className="font-semibold">{survivalRate}%</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full h-2 bg-[var(--bg-secondary)] rounded-full mb-4">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-[var(--accent-green)] to-[var(--accent-blue)]"
+                  style={{
+                    width: `${ch.totalPlayers > 0 ? survivalRate : 100}%`,
+                  }}
+                />
+              </div>
+
+              <Link
+                href={`/challenges/${ch.id}`}
+                className="btn-primary w-full block text-center text-sm"
+              >
+                {isConnected
+                  ? ch.isEnded
+                    ? "View Results"
+                    : "Join Challenge"
+                  : "View Details"}
+              </Link>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
