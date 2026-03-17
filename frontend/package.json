@@ -13,6 +13,7 @@
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "starknet": "^9.4.2",
     "starkzap": "latest"
   },
   "devDependencies": {
@@ -23,7 +24,6 @@
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.5.0",
-    "starknet": "^9.4.2",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.0"
   }

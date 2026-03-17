@@ -3,7 +3,13 @@
 import { useCallback } from "react";
 import { useStarkZap } from "@/providers/starknet";
 import { STARKFIT_CONTRACT_ADDRESS, ETH_ADDRESS } from "./constants";
-import type { Call } from "starknet";
+
+// Inline Call type — avoids importing the heavy starknet package
+interface Call {
+  contractAddress: string;
+  entrypoint: string;
+  calldata?: string[] | number[];
+}
 
 // Helper to convert ETH amount to wei (u256)
 function ethToWei(amount: string): { low: string; high: string } {

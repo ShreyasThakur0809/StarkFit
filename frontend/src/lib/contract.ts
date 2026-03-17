@@ -1,18 +1,8 @@
-import { RpcProvider } from "starknet";
 import { STARKFIT_CONTRACT_ADDRESS } from "./constants";
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_STARKNET_RPC ||
   "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_8/5sF0mkfo834fgZ0BVRo1ubDqYLuCRcSm";
-
-let _provider: RpcProvider | null = null;
-
-export function getProvider(): RpcProvider {
-  if (!_provider) {
-    _provider = new RpcProvider({ nodeUrl: RPC_URL });
-  }
-  return _provider;
-}
 
 export interface ChallengeData {
   id: number;
@@ -148,14 +138,43 @@ export function getDaysLeft(startTime: number, durationDays: number): number {
 
 // ===== Contract read functions =====
 
-// Use raw callContract for reliability across starknet.js versions
+// Raw JSON-RPC call — zero dependency, works everywhere
 async function callView(entrypoint: string, calldata: string[] = []): Promise<string[]> {
-  const provider = getProvider();
-  return provider.callContract({
-    contractAddress: STARKFIT_CONTRACT_ADDRESS,
-    entrypoint,
-    calldata,
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_call",
+      params: [
+        {
+          contract_address: STARKFIT_CONTRACT_ADDRESS,
+          entry_point_selector: getSelectorFromName(entrypoint),
+          calldata,
+        },
+        "latest",
+      ],
+    }),
   });
+  const json = await response.json();
+  if (json.error) throw new Error(json.error.message || "RPC error");
+  return json.result;
+}
+
+// Precomputed sn_keccak selectors — no crypto dependency needed
+const SELECTORS: Record<string, string> = {
+  get_challenge_count: "0x3dc0479efc3725e2d28778fbe43b06336f4c866e020dbac12dc9504e9c4bee9",
+  get_challenge: "0x97667be2a783196b421750271a092f286456864f0320e873d7b286312a28c5",
+  get_player_status: "0x2f6055c1543de06428774841756167057dcbe87d7a74264ec0fa4fceb86081",
+  get_market_count: "0x25c4e2964bdb148a2e21ab6c0fa1914ec9ad251f44c4f301914bc99585304f5",
+  get_market: "0x5764f9d1572e4d8cb7432f108c87d6ba790e18eb821744b0eefd034e85fc79",
+};
+
+function getSelectorFromName(name: string): string {
+  const selector = SELECTORS[name];
+  if (!selector) throw new Error(`Unknown selector: ${name}`);
+  return selector;
 }
 
 export async function fetchChallengeCount(): Promise<number> {

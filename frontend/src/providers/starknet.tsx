@@ -9,7 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { StarkZap, type WalletInterface } from "starkzap";
-import type { Call } from "starknet";
+
+// Inline Call type — avoids importing the heavy starknet package
+interface Call {
+  contractAddress: string;
+  entrypoint: string;
+  calldata?: string[] | number[];
+}
 
 // Browser wallet types (injected by extensions like Ready, Argent X, Braavos)
 interface StarknetWindowWallet {
