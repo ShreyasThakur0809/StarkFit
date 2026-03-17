@@ -10,13 +10,8 @@ import {
   getTokenDecimals,
   getDaysLeft,
 } from "@/lib/contract";
-import { ETH_ADDRESS, WBTC_ADDRESS } from "@/lib/constants";
+import { SUPPORTED_TOKENS } from "@/lib/constants";
 import Link from "next/link";
-
-const TOKEN_MAP: Record<string, string> = {
-  ETH: ETH_ADDRESS,
-  WBTC: WBTC_ADDRESS,
-};
 
 export default function ChallengesPage() {
   const { isConnected } = useAccount();
@@ -26,8 +21,8 @@ export default function ChallengesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [txStatus, setTxStatus] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
-    token: "ETH",
-    stakeAmount: "0.01",
+    token: SUPPORTED_TOKENS[0].symbol,
+    stakeAmount: "1",
     durationDays: 30,
     stepGoal: 7000,
   });
@@ -36,7 +31,7 @@ export default function ChallengesPage() {
     setIsCreating(true);
     setTxStatus(null);
     try {
-      const tokenAddress = TOKEN_MAP[createForm.token];
+      const tokenAddress = SUPPORTED_TOKENS.find(t => t.symbol === createForm.token)!.address;
       const txHash = await createChallenge(
         tokenAddress,
         createForm.stakeAmount,
@@ -45,7 +40,8 @@ export default function ChallengesPage() {
       );
       setTxStatus(`Challenge created! Tx: ${txHash.slice(0, 10)}...`);
       setShowCreate(false);
-      refetch();
+      // Wait for state to be indexed before refetching
+      setTimeout(() => refetch(), 3000);
     } catch (err: any) {
       setTxStatus(`Error: ${err.message || "Transaction failed"}`);
     } finally {
@@ -101,8 +97,11 @@ export default function ChallengesPage() {
                 }
                 className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-white"
               >
-                <option value="ETH">ETH</option>
-                <option value="WBTC">WBTC</option>
+                {SUPPORTED_TOKENS.map((t) => (
+                  <option key={t.symbol} value={t.symbol}>
+                    {t.symbol}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

@@ -1,30 +1,17 @@
-import { RpcProvider, Contract } from "starknet";
-import { STARKFIT_ABI } from "./abi";
+import { RpcProvider } from "starknet";
 import { STARKFIT_CONTRACT_ADDRESS } from "./constants";
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_STARKNET_RPC ||
-  "https://starknet-sepolia.public.blastapi.io";
+  "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_8/5sF0mkfo834fgZ0BVRo1ubDqYLuCRcSm";
 
 let _provider: RpcProvider | null = null;
-let _contract: Contract | null = null;
 
 export function getProvider(): RpcProvider {
   if (!_provider) {
     _provider = new RpcProvider({ nodeUrl: RPC_URL });
   }
   return _provider;
-}
-
-export function getContract(): Contract {
-  if (!_contract) {
-    _contract = new Contract({
-      abi: STARKFIT_ABI,
-      address: STARKFIT_CONTRACT_ADDRESS,
-      providerOrAccount: getProvider(),
-    });
-  }
-  return _contract;
 }
 
 export interface ChallengeData {
@@ -127,6 +114,11 @@ export function formatTokenAmount(wei: bigint, decimals: number = 18): string {
 export function getTokenSymbol(tokenAddress: string): string {
   const normalized = tokenAddress.toLowerCase();
   if (
+    normalized.includes("04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d")
+  ) {
+    return "STRK";
+  }
+  if (
     normalized.includes("049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7")
   ) {
     return "ETH";
@@ -156,16 +148,37 @@ export function getDaysLeft(startTime: number, durationDays: number): number {
 
 // ===== Contract read functions =====
 
+// Use raw callContract for reliability across starknet.js versions
+async function callView(entrypoint: string, calldata: string[] = []): Promise<string[]> {
+  const provider = getProvider();
+  return provider.callContract({
+    contractAddress: STARKFIT_CONTRACT_ADDRESS,
+    entrypoint,
+    calldata,
+  });
+}
+
 export async function fetchChallengeCount(): Promise<number> {
-  const contract = getContract();
-  const result = await contract.get_challenge_count();
-  return Number(result);
+  const result = await callView("get_challenge_count");
+  return Number(BigInt(result[0]));
 }
 
 export async function fetchChallenge(id: number): Promise<ChallengeData> {
-  const contract = getContract();
-  const result = await contract.get_challenge(id);
-  return parseChallenge(result);
+  const r = await callView("get_challenge", [id.toString()]);
+  return {
+    id: Number(BigInt(r[0])),
+    creator: "0x" + BigInt(r[1]).toString(16),
+    token: "0x" + BigInt(r[2]).toString(16),
+    stakeAmount: BigInt(r[3]) + (BigInt(r[4]) << 128n),
+    durationDays: Number(BigInt(r[5])),
+    stepGoal: Number(BigInt(r[6])),
+    startTime: Number(BigInt(r[7])),
+    activePlayers: Number(BigInt(r[8])),
+    totalPlayers: Number(BigInt(r[9])),
+    totalPool: BigInt(r[10]) + (BigInt(r[11]) << 128n),
+    isActive: BigInt(r[12]) !== 0n,
+    isEnded: BigInt(r[13]) !== 0n,
+  };
 }
 
 export async function fetchAllChallenges(): Promise<ChallengeData[]> {
@@ -181,21 +194,32 @@ export async function fetchPlayerStatus(
   challengeId: number,
   playerAddress: string
 ): Promise<PlayerStatusData> {
-  const contract = getContract();
-  const result = await contract.get_player_status(challengeId, playerAddress);
-  return parsePlayerStatus(result);
+  const r = await callView("get_player_status", [challengeId.toString(), playerAddress]);
+  return {
+    isJoined: BigInt(r[0]) !== 0n,
+    isActive: BigInt(r[1]) !== 0n,
+    hasClaimed: BigInt(r[2]) !== 0n,
+    lastVerifiedDay: Number(BigInt(r[3])),
+  };
 }
 
 export async function fetchMarketCount(): Promise<number> {
-  const contract = getContract();
-  const result = await contract.get_market_count();
-  return Number(result);
+  const result = await callView("get_market_count");
+  return Number(BigInt(result[0]));
 }
 
 export async function fetchMarket(id: number): Promise<MarketData> {
-  const contract = getContract();
-  const result = await contract.get_market(id);
-  return parseMarket(result);
+  const r = await callView("get_market", [id.toString()]);
+  return {
+    id: Number(BigInt(r[0])),
+    challengeId: Number(BigInt(r[1])),
+    player: "0x" + BigInt(r[2]).toString(16),
+    token: "0x" + BigInt(r[3]).toString(16),
+    yesPool: BigInt(r[4]) + (BigInt(r[5]) << 128n),
+    noPool: BigInt(r[6]) + (BigInt(r[7]) << 128n),
+    isResolved: BigInt(r[8]) !== 0n,
+    outcome: BigInt(r[9]) !== 0n,
+  };
 }
 
 export async function fetchAllMarkets(): Promise<MarketData[]> {
