@@ -4,9 +4,9 @@ import { StarknetProvider } from "@/providers/starknet";
 import { Navbar } from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "StarkFit - Stake. Walk. Earn.",
+  title: "Commit. Move. Win. ",
   description:
-    "Crypto fitness challenges on Starknet. Stake ETH, complete daily steps, split the prize pool.",
+    "Stake your commitment. Hit your daily step goal or get eliminated. The last ones standing take the entire pot.",
 };
 
 export default function RootLayout({

@@ -10,22 +10,16 @@ export default function Home() {
     <div className="pt-16">
       {/* Hero */}
       <section className="min-h-[90vh] flex flex-col items-center justify-center px-6 text-center">
-        <div className="mb-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-sm text-[var(--text-secondary)]">
-          <div className="pulse-dot" />
-          Built on Starknet
-        </div>
-
         <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
           Stake. Walk.{" "}
           <span className="gradient-text">Earn.</span>
         </h1>
 
         <p className="text-xl text-[var(--text-secondary)] max-w-2xl mb-10">
-          Join crypto fitness challenges where you stake ETH to commit to daily
-          steps. Hit your goals or lose your stake. Survivors split the prize
-          pool.
-        </p>
-
+  Stake your BTC/ETH, join fitness challenges <br />
+  Hit your goals or lose your stake <br />
+  Last ones standing take the entire pot
+</p>
         <div className="flex flex-col sm:flex-row gap-4">
           <Link href="/challenges" className="btn-primary text-lg">
             Explore Challenges
@@ -136,7 +130,9 @@ export default function Home() {
 
       {/* CTA */}
       <section className="py-20 px-6 text-center">
-        <h2 className="text-3xl font-bold mb-4">Ready to Put Your Steps Where Your Stake Is?</h2>
+        <h2 className="text-3xl font-bold mb-4">
+          Ready to Put Your Steps Where Your Stake Is?
+        </h2>
         <p className="text-[var(--text-secondary)] mb-8">
           Gasless transactions. No ETH needed for gas. Powered by AVNU Paymaster.
         </p>
