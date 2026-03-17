@@ -20,10 +20,16 @@ importers:
       react-dom:
         specifier: ^18.3.0
         version: 18.3.1(react@18.3.1)
+      starknet:
+        specifier: ^9.4.2
+        version: 9.4.2(typescript@5.9.3)
       starkzap:
         specifier: latest
         version: 1.0.0(typescript@5.9.3)
     devDependencies:
+      '@netlify/plugin-nextjs':
+        specifier: ^5.15.9
+        version: 5.15.9
       '@tailwindcss/postcss':
         specifier: ^4.1.0
         version: 4.2.1
@@ -45,9 +51,6 @@ importers:
       postcss:
         specifier: ^8.5.0
         version: 8.5.8
-      starknet:
-        specifier: ^9.4.2
-        version: 9.4.2(typescript@5.9.3)
       tailwindcss:
         specifier: ^4.1.0
         version: 4.2.1
@@ -126,6 +129,10 @@ packages:
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
+
+  '@netlify/plugin-nextjs@5.15.9':
+    resolution: {integrity: sha512-4kJvV+wrt4/ncehfaOXfhv1FYKCv9EFjq6/tgXXYSlqPDcbsuTXR0DTz9IvyZ/CpPRadRD/zzIqD9wXgCmA2lg==}
+    engines: {node: '>=18.0.0'}
 
   '@next/env@14.2.35':
     resolution: {integrity: sha512-DuhvCtj4t9Gwrx80dmz2F4t/zKQ4ktN8WrMwOuVzkJfBilwAwGr6v16M5eI8yCuZ63H9TTuEU09Iu2HqkzFPVQ==}
@@ -2016,6 +2023,8 @@ snapshots:
       '@emnapi/runtime': 1.9.0
       '@tybys/wasm-util': 0.10.1
     optional: true
+
+  '@netlify/plugin-nextjs@5.15.9': {}
 
   '@next/env@14.2.35': {}
 
