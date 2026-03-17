@@ -20,17 +20,57 @@ interface MyChallengeInfo {
   status: PlayerStatusData;
 }
 
+interface FitnessStatus {
+  google_fit: boolean;
+  strava: boolean;
+  connected: boolean;
+  source: string | null;
+}
+
+interface VerifyResult {
+  steps: number;
+  source: string;
+  submitted: boolean;
+  txHash?: string;
+  error?: string;
+  message?: string;
+}
+
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const { claimReward } = useStarkFitContract();
-  const { data: allChallenges, loading: loadingChallenges } = useChallenges();
+  const { data: allChallenges, loading: loadingChallenges, refetch: refetchChallenges } = useChallenges();
   const [myChallenges, setMyChallenges] = useState<MyChallengeInfo[]>([]);
   const [loadingMy, setLoadingMy] = useState(false);
   const [claimingId, setClaimingId] = useState<number | null>(null);
   const [txStatus, setTxStatus] = useState<string | null>(null);
-  const [fitnessConnected, setFitnessConnected] = useState<string | null>(null);
+  const [fitness, setFitness] = useState<FitnessStatus | null>(null);
+  const [verifyingId, setVerifyingId] = useState<number | null>(null);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
 
-  // Fetch player status for each challenge to find the ones user joined
+  // Check fitness connection status
+  useEffect(() => {
+    fetch("/api/fitness/status")
+      .then((r) => r.json())
+      .then(setFitness)
+      .catch(() => {});
+  }, []);
+
+  // Handle redirect from OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "true") {
+      // Re-check fitness status after OAuth redirect
+      fetch("/api/fitness/status")
+        .then((r) => r.json())
+        .then(setFitness)
+        .catch(() => {});
+      // Clean URL
+      window.history.replaceState({}, "", "/dashboard");
+    }
+  }, []);
+
+  // Fetch player status for each challenge
   useEffect(() => {
     if (!allChallenges || !address) {
       setMyChallenges([]);
@@ -70,6 +110,37 @@ export default function DashboardPage() {
     }
   };
 
+  const handleVerifySteps = async (challengeId: number) => {
+    setVerifyingId(challengeId);
+    setVerifyResult(null);
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const res = await fetch("/api/fitness/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId,
+          playerAddress: address,
+          date: today,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVerifyResult({ steps: 0, source: "none", submitted: false, error: data.error });
+      } else {
+        setVerifyResult(data);
+        if (data.submitted) {
+          // Refresh challenge data after on-chain submission
+          setTimeout(() => refetchChallenges(), 3000);
+        }
+      }
+    } catch (err: any) {
+      setVerifyResult({ steps: 0, source: "none", submitted: false, error: err.message });
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
   const handleConnectFitness = (provider: string) => {
     const isGoogle = provider === "google_fit";
     const clientId = isGoogle
@@ -77,17 +148,30 @@ export default function DashboardPage() {
       : process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID;
 
     if (!clientId) {
-      setFitnessConnected(provider);
+      // Demo mode — no API keys configured
+      setTxStatus(
+        `${isGoogle ? "Google Fit" : "Strava"} API keys not configured. Add ${isGoogle ? "NEXT_PUBLIC_GOOGLE_CLIENT_ID" : "NEXT_PUBLIC_STRAVA_CLIENT_ID"} to .env.local.`
+      );
       return;
     }
 
     if (isGoogle) {
       const redirectUri = `${window.location.origin}/api/auth/google-fit/callback`;
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("https://www.googleapis.com/auth/fitness.activity.read")}&access_type=offline`;
+      const scope = "https://www.googleapis.com/auth/fitness.activity.read";
+      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
     } else {
       const redirectUri = `${window.location.origin}/api/auth/strava/callback`;
       window.location.href = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=activity:read_all`;
     }
+  };
+
+  const handleDisconnectFitness = async () => {
+    // Clear fitness cookies by calling a simple endpoint
+    document.cookie = "google_fit_token=; path=/; max-age=0";
+    document.cookie = "google_fit_refresh=; path=/; max-age=0";
+    document.cookie = "strava_token=; path=/; max-age=0";
+    document.cookie = "strava_refresh=; path=/; max-age=0";
+    setFitness({ google_fit: false, strava: false, connected: false, source: null });
   };
 
   if (!isConnected) {
@@ -101,7 +185,7 @@ export default function DashboardPage() {
     );
   }
 
-  const activeChallenges = myChallenges.filter((m) => m.status.isActive);
+  const activeChallenges = myChallenges.filter((m) => m.status.isActive && !m.challenge.isEnded);
   const completedChallenges = myChallenges.filter(
     (m) => m.challenge.isEnded && m.status.isActive
   );
@@ -118,16 +202,46 @@ export default function DashboardPage() {
         {address?.slice(0, 10)}...{address?.slice(-8)}
       </p>
 
-      {/* Status message */}
+      {/* Status messages */}
       {txStatus && (
         <div
-          className={`mb-6 p-3 rounded-lg text-sm ${
+          className={`mb-4 p-3 rounded-lg text-sm ${
             txStatus.startsWith("Error")
               ? "bg-red-900/30 border border-red-500/30 text-red-400"
               : "bg-green-900/30 border border-green-500/30 text-green-400"
           }`}
         >
           {txStatus}
+        </div>
+      )}
+
+      {verifyResult && (
+        <div
+          className={`mb-4 p-4 rounded-lg text-sm ${
+            verifyResult.error
+              ? "bg-red-900/30 border border-red-500/30 text-red-400"
+              : "bg-blue-900/30 border border-blue-500/30 text-blue-300"
+          }`}
+        >
+          {verifyResult.error ? (
+            <p>{verifyResult.error}</p>
+          ) : (
+            <div>
+              <p className="font-semibold mb-1">
+                Steps today: {verifyResult.steps.toLocaleString()} (via{" "}
+                {verifyResult.source === "google_fit" ? "Google Fit" : "Strava"})
+              </p>
+              {verifyResult.submitted ? (
+                <p className="text-green-400">
+                  Submitted on-chain! Tx: {verifyResult.txHash?.slice(0, 14)}...
+                </p>
+              ) : (
+                <p className="text-yellow-400">
+                  {verifyResult.message || "Not submitted on-chain"}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -151,18 +265,74 @@ export default function DashboardPage() {
           <div className="text-2xl font-bold text-blue-400">
             {isLoading ? "..." : completedChallenges.length}
           </div>
-          <div className="text-sm text-[var(--text-secondary)]">
-            Completed
-          </div>
+          <div className="text-sm text-[var(--text-secondary)]">Completed</div>
         </div>
         <div className="card text-center">
           <div className="text-2xl font-bold text-[var(--accent-red)]">
             {isLoading ? "..." : eliminatedChallenges.length}
           </div>
-          <div className="text-sm text-[var(--text-secondary)]">
-            Eliminated
-          </div>
+          <div className="text-sm text-[var(--text-secondary)]">Eliminated</div>
         </div>
+      </div>
+
+      {/* Fitness Connection */}
+      <div className="card mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Fitness Tracker</h2>
+          {fitness?.connected && (
+            <button
+              onClick={handleDisconnectFitness}
+              className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-red)] transition"
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+
+        {fitness?.connected ? (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-green-900/20 border border-green-500/20">
+            <div className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+            <div>
+              <span className="font-medium text-green-400">
+                {fitness.source === "google_fit" ? "Google Fit" : "Strava"}
+              </span>
+              <span className="text-sm text-[var(--text-secondary)]">
+                {" "}connected — your steps are being tracked
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            <button
+              onClick={() => handleConnectFitness("google_fit")}
+              className="flex items-center gap-3 p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:border-blue-500/40 transition text-left"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                G
+              </div>
+              <div>
+                <div className="font-medium text-sm">Google Fit</div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  Connect to sync step data
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => handleConnectFitness("strava")}
+              className="flex items-center gap-3 p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:border-orange-500/40 transition text-left"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                S
+              </div>
+              <div>
+                <div className="font-medium text-sm">Strava</div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  Estimate steps from activities
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* My Challenges */}
@@ -234,7 +404,19 @@ export default function DashboardPage() {
                   Last verified: Day {status.lastVerifiedDay || "—"}
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-center">
+                {/* Verify Steps button — only for active challenges with fitness connected */}
+                {status.isActive && !ch.isEnded && fitness?.connected && (
+                  <button
+                    onClick={() => handleVerifySteps(ch.id)}
+                    disabled={verifyingId === ch.id}
+                    className="btn-secondary text-sm disabled:opacity-50"
+                  >
+                    {verifyingId === ch.id
+                      ? "Verifying..."
+                      : "Verify Steps"}
+                  </button>
+                )}
                 {canClaim && (
                   <button
                     onClick={() => handleClaimReward(ch.id)}
@@ -261,51 +443,6 @@ export default function DashboardPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* Fitness Connection */}
-      <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Fitness Connection</h2>
-        <div className="flex gap-4">
-          <button
-            onClick={() => handleConnectFitness("google_fit")}
-            className={`flex-1 p-4 rounded-lg border text-center transition ${
-              fitnessConnected === "google_fit"
-                ? "border-[var(--accent-green)] bg-green-900/20"
-                : "border-[var(--border)] hover:border-[var(--accent-green)]/50"
-            }`}
-          >
-            <div className="font-semibold mb-1">Google Fit</div>
-            <div
-              className={`text-xs ${
-                fitnessConnected === "google_fit"
-                  ? "text-green-400"
-                  : "text-[var(--text-secondary)]"
-              }`}
-            >
-              {fitnessConnected === "google_fit" ? "Connected" : "Connect"}
-            </div>
-          </button>
-          <button
-            onClick={() => handleConnectFitness("strava")}
-            className={`flex-1 p-4 rounded-lg border text-center transition ${
-              fitnessConnected === "strava"
-                ? "border-[var(--accent-green)] bg-green-900/20"
-                : "border-[var(--border)] hover:border-[var(--accent-green)]/50"
-            }`}
-          >
-            <div className="font-semibold mb-1">Strava</div>
-            <div
-              className={`text-xs ${
-                fitnessConnected === "strava"
-                  ? "text-green-400"
-                  : "text-[var(--text-secondary)]"
-              }`}
-            >
-              {fitnessConnected === "strava" ? "Connected" : "Connect"}
-            </div>
-          </button>
-        </div>
       </div>
     </div>
   );
