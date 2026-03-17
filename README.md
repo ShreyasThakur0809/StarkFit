@@ -1,6 +1,7 @@
 # StarkFit
 
-**Stake. Walk. Earn.** A crypto fitness challenge platform on Starknet where users stake tokens, complete daily walking goals, and survivors split the prize pool.
+**Stake. Walk. Earn.** 
+A crypto fitness challenge platform on Starknet where users stake tokens, complete daily walking goals, and survivors split the prize pool.
 
 Built with **StarkZap SDK** + **AVNU Paymaster** for fully gasless transactions.
 
